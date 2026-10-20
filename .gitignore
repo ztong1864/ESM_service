@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+
+# Model checkpoints: hundreds of MB, fetched with scripts/fetch_models.py.
+models/

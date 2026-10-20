@@ -1,0 +1,15 @@
+# Install torch's CPU build from PyTorch's own index, or pip pulls in several GB of CUDA libraries that a
+# CPU server never uses:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+# On a GPU machine, drop that index and install the CUDA build of torch instead.
+# requirements.lock.txt holds the exact versions this service was tested with.
+
+fair-esm==2.0.0
+torch>=2.4,<3
+biopython>=1.83
+numpy>=1.26
+
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+pydantic>=2.7,<3
+python-dotenv>=1.0

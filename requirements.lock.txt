@@ -1,0 +1,13 @@
+# The exact versions this service was tested with (the same torch, fair-esm and Biopython that
+# FounDryClaw's iBioFoundry/esm environment used). Transitive dependencies are left to pip.
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.lock.txt
+
+fair-esm==2.0.0
+torch==2.14.1
+biopython==1.88
+numpy==2.5.4
+
+fastapi==0.143.0
+uvicorn==0.54.0
+pydantic==2.14.0
+python-dotenv==1.2.4
