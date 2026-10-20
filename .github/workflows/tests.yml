@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # The tests run in mock mode (tests/conftest.py sets ESM_SERVICE_MOCK), so neither torch nor a
+      # model checkpoint is needed here: this job stays small and fast.
+      - run: pip install -r requirements-dev.txt
+
+      - run: python -m pytest -q

@@ -1,8 +1,20 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .env
 .pytest_cache/
+.coverage
 
-# Model checkpoints: hundreds of MB, fetched with scripts/fetch_models.py.
-models/
+# Model checkpoints: hundreds of MB, fetched with scripts/fetch_models.py. The folder itself is kept, so a
+# fresh clone already has the directory docker-compose.yml mounts.
+models/*
+!models/.gitkeep
+
+# Interrupted downloads (scripts/fetch_models.py continues from them).
+*.part
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

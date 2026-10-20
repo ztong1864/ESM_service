@@ -1,2 +1,15 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Text files are stored with LF and checked out with LF, so the repo reads the same on Windows, Linux and
+# in the container. The two Windows launchers are the exception: they are run by cmd.exe and PowerShell,
+# which expect CRLF.
+* text=auto eol=lf
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Model checkpoints are never diffed or merged (they are git-ignored; this guards a forced add).
+*.pt binary
+*.pth binary

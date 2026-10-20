@@ -1,0 +1,2 @@
+Model checkpoints are downloaded here by scripts/fetch_models.py and are not kept in git.
+This file only keeps the folder in a fresh clone, because docker-compose.yml mounts it.
