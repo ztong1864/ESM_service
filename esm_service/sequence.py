@@ -16,8 +16,6 @@ RESIDUE_LETTERS = set("ACDEFGHIKLMNPQRSTVWYXBZUO")
 MASK = "<mask>"
 MAX_RESIDUES = 1022  # ESM-2 was trained on at most 1022 residues (1024 tokens with the start and end tokens)
 
-GENBANK_SUFFIXES = {".gb", ".gbk", ".genbank", ".gbff"}
-
 
 class InputError(ValueError):
     """Something about the request's sequence is wrong; the API answers 400 with this message."""
@@ -64,7 +62,7 @@ def translate(dna: str) -> str:
 
     cleaned = "".join(dna.split()).upper().replace("U", "T")
     if set(cleaned) - set("ACGTN"):
-        raise InputError("translate needs a DNA/RNA sequence (A, C, G, T/U, N)")
+        raise InputError("the sequence to translate must be DNA or RNA (A, C, G, T/U, N)")
     if len(cleaned) % 3:
         raise InputError(f"the DNA is {len(cleaned)} nt long, not a whole number of codons; "
                          "give the coding sequence only")
@@ -88,7 +86,7 @@ def tokens_of(sequence: str) -> list[str]:
                              "give one protein chain")
         elif letter.isspace() or letter.isdigit() or letter in ">;":
             raise InputError("the sequence contains spaces, digits or a FASTA header; pass only residue "
-                             "letters and <mask>, or send the file's text as record_text")
+                             "letters and <mask>, or give the sequence as a FASTA or GenBank file")
         else:
             raise InputError(f"unexpected character {letter!r} at residue {len(tokens) + 1}; residues are "
                              f"{''.join(sorted(RESIDUE_LETTERS))} and masks are written {MASK}")
@@ -123,7 +121,7 @@ def prepare(
         raw = raw[:-1]
         notes.append("Removed the terminal '*' stop symbol.")
     if not translate_dna and len(raw) >= 30 and set(raw.upper()) <= set("ACGTUN"):
-        notes.append("The sequence contains only A, C, G, T/U and N: if it is DNA, set translate.")
+        notes.append("The sequence contains only A, C, G, T/U and N: if it is DNA, translate it first.")
 
     tokens = tokens_of(raw)
     wild_types: dict[int, str] = {}
@@ -148,8 +146,8 @@ def variants_for(prepared: PreparedSequence, independent: bool) -> list[list[str
     if not independent:
         return [prepared.tokens]
     if not prepared.wild_types:
-        raise InputError("independent needs positions: the other masked positions need their "
-                         "wild-type residues")
+        raise InputError("scoring each position on its own needs the wild-type residues of the other "
+                         "positions: give the positions to mask instead of writing <mask>")
     variants = []
     for position in prepared.mask_positions:
         variant = list(prepared.tokens)

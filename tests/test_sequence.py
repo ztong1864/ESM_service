@@ -55,8 +55,9 @@ def test_internal_stop_is_refused_but_a_terminal_one_is_dropped():
     assert any("terminal" in note for note in result.notes)
 
 
-def test_header_or_spaces_point_at_record_text():
-    with pytest.raises(InputError, match="record_text"):
+def test_header_or_spaces_point_at_a_file():
+    # The message names no flag and no field: the CLI and an API caller both print it as it is.
+    with pytest.raises(InputError, match="as a FASTA or GenBank file"):
         prepared(sequence=">sp|P1|X\nMKT<mask>F")
 
 
@@ -74,7 +75,7 @@ def test_translate_then_mask_by_position():
 def test_dna_looking_wild_type_gets_a_note():
     # Only the wild-type path can hit this: a sequence holding <mask> is not all ACGTUN anyway.
     result = prepared(sequence="ACGT" * 10, positions=[3])
-    assert any("set translate" in note for note in result.notes)
+    assert any("translate it first" in note for note in result.notes)
 
 
 def test_too_long_is_refused():
@@ -104,7 +105,7 @@ def test_independent_variants_restore_the_other_positions():
 
 def test_independent_without_positions_is_refused():
     result = prepared(sequence="MK<mask>TF")
-    with pytest.raises(InputError, match="independent needs positions"):
+    with pytest.raises(InputError, match="wild-type residues of the other"):
         variants_for(result, independent=True)
 
 
@@ -112,3 +113,17 @@ def test_token_order_choices():
     assert len(token_order_for(None, standard_only=True)) == 20
     assert "<mask>" in token_order_for(None, standard_only=False)
     assert token_order_for(["A", " C "], standard_only=False) == ["A", "C"]
+
+
+def test_a_genbank_record_can_be_translated():
+    genbank = """LOCUS       CDS1                       9 bp    DNA     linear   UNK 01-JAN-2026
+DEFINITION  a test coding sequence.
+ACCESSION   CDS1
+ORIGIN
+        1 atgaaaacc
+//
+"""
+    result = prepared(record_text=genbank, record_format="genbank", translate_dna=True, positions=[2])
+    assert result.record == "CDS1"
+    assert "".join(result.tokens) == "M<mask>T"
+    assert any("Translated" in note for note in result.notes)

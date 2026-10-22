@@ -1,0 +1,39 @@
+# Everything here is sent to the Docker daemon as build context, and `COPY . .` puts it in the image.
+# Without this file the context carries the local .venv (about 800 MB) and the model files (another
+# few hundred MB), which makes every build slow and the image needlessly large.
+
+# Local Python environment, never used inside the image (the image installs its own).
+.venv/
+venv/
+
+# Model files are mounted read-only by docker-compose.yml, not baked in.
+models/
+
+# Local settings: docker compose passes them at run time through env_file, so they must not be in the image.
+.env
+
+# Repository and tooling.
+.git/
+.github/
+.gitattributes
+.gitignore
+.dockerignore
+.pytest_cache/
+.coverage
+__pycache__/
+*.py[cod]
+*.part
+
+# Host-side launchers and deployment files; the container is started by compose or systemd.
+run_local.ps1
+start_esm_service.cmd
+deploy/
+
+# Tests need requirements-dev.txt, which the image does not install. `--verify` and the API are what runs
+# in the container; the tests run where the repository is checked out.
+tests/
+pytest.ini
+
+# Documentation.
+*.md
+LICENSE

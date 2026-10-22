@@ -1,0 +1,41 @@
+[Unit]
+# The ESM service run directly on the host, without Docker. For the Docker deployment use
+# esm-service-docker.service instead (or nothing at all: compose's own restart policy already brings the
+# container back at boot). See deploy/README.md.
+Description=ESM service (ESM-2 masked-position scoring)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=esm
+Group=esm
+WorkingDirectory=/opt/esm-service
+
+# Every setting has a working default, so a missing .env is not an error (the leading - allows that).
+EnvironmentFile=-/opt/esm-service/.env
+
+# glibc gives each thread its own malloc arena; with torch's thread pool that makes the resident size of
+# a process that runs for months creep upward. Two arenas is the usual cure and costs nothing here.
+Environment=MALLOC_ARENA_MAX=2
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+ExecStart=/opt/esm-service/.venv/bin/python scripts/run_esm_api.py --host 127.0.0.1 --port 8789
+
+Restart=always
+RestartSec=5
+# Loading a checkpoint takes seconds for esm2-35m and minutes for a large model on a busy CPU: a short
+# start-up timeout would kill the service just as it was coming up.
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+# The service reads its own folder and answers HTTP; it needs no write access anywhere.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

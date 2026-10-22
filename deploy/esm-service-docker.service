@@ -1,0 +1,24 @@
+[Unit]
+# Lets systemd own the container, so `systemctl start/stop/restart esm-service` works and the service
+# appears in `systemctl status`. It is optional: docker-compose.yml already sets
+# `restart: unless-stopped`, so with docker.service enabled the container comes back after a reboot on
+# its own. Use this when you want one place to manage it, or an ordering dependency on another unit.
+Description=ESM service (docker compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/opt/esm-service
+
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose up -d --force-recreate
+
+# The first start may build the image and install torch, which takes a while.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

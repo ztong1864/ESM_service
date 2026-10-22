@@ -62,9 +62,46 @@ Set the service's address in FounDryClaw's `api/.env`:
 ESM_SERVICE_BASE_URL=http://127.0.0.1:8789
 ```
 
-and call it from the `esm-protein` tool package (`tools/Device/iBioFoundry/.claude/tools/`), the same way
-`trace-collab` calls TRACE Lab. The chat side is a tool, not a skill script, so the model's calls are one
-HTTP request each, with no Python environment or model files on the FounDryClaw side.
+FounDryClaw passes that address to each chat (`_claude_env` in `api/app/services/chat_runtime_service.py`),
+where the `esm-directed-evolution` skill's `scripts/esm_mask_probabilities.py` reads it. That script is a
+thin client: it keeps its command line, reads a FASTA or GenBank file, posts the sequence here and prints
+the answer. Nothing on the FounDryClaw side holds torch, fair-esm or a model file any more.
+
+## Running it for months
+
+The service is meant to stay up: a model is loaded once and answers in about 0.05 s, which is the whole
+point of it being a service rather than a script. [deploy/](deploy/) holds the unit files and the step-by-step
+commands; in short, three ways to keep it running:
+
+- **Docker** (`docker compose up -d`), the normal way: `restart: unless-stopped` brings it back after a
+  crash or a reboot, the healthcheck polls `/api/health` every 30 s, and the log is capped at 3 x 10 MB.
+  Note that Docker restarts a container that *exits*, not one the healthcheck marks unhealthy -- watch
+  `/api/health` from outside too, where `status` is `degraded` when the model cannot be loaded.
+  [deploy/esm-service-docker.service](deploy/esm-service-docker.service) hands the container to systemd
+  when you want `systemctl` to manage it.
+- **Linux without Docker**: [deploy/esm-service.service](deploy/esm-service.service), which runs the
+  service from the host's own `.venv` with `Restart=always` and `MALLOC_ARENA_MAX=2` (glibc's per-thread
+  malloc arenas make a long-running torch process creep in RSS).
+- **Windows without Docker**: `start_esm_service.cmd` is a foreground window -- it dies with the session
+  and restarts nothing, so it is for trying the service out, not for running it. Use Task Scheduler
+  ("at startup", "run whether user is logged on or not") calling
+  `.venv/Scripts/python.exe scripts/run_esm_api.py`, and redirect the output to a file you rotate
+  yourself.
+
+What to expect from a long run, measured over 400 mixed requests and 160 model loads:
+
+- **Steady state is flat.** With esm2-35m resident, 400 requests of mixed length left the process
+  oscillating between 390 and 490 MB with no upward trend.
+- **Swapping models costs about 1 MB a time** in fragmentation (the models themselves are released; this
+  is the allocator, not a leak). It only happens when requests ask for different models, because
+  `ESM_SERVICE_MAX_LOADED_MODELS` is 1 by default. If two models are in regular use, raise it to 2 so
+  nothing is unloaded (esm2-8m plus esm2-35m is about 0.7 GB together); otherwise a scheduled weekly
+  restart costs 0.5 s of preload.
+- **Never run more than one worker.** Each would load its own copy of the model; `run_esm_api.py` starts
+  a single process on purpose, and concurrency is handled inside it by `ESM_SERVICE_MAX_CONCURRENCY`.
+- **Check the model files now and then**: `python scripts/fetch_models.py --verify` reads what is on disk
+  and compares it with the recorded checksums (a monthly scheduled task is enough). An existing file is
+  never re-read while fetching, so this is what catches a truncated download.
 
 ## Settings
 
@@ -79,6 +116,7 @@ Every setting is an environment variable with a working default; `.env.example` 
 | `ESM_SERVICE_MAX_LOADED_MODELS` | `1` | How many models stay in memory. |
 | `ESM_SERVICE_MAX_CONCURRENCY` | `2` | How many requests are scored at once. |
 | `ESM_SERVICE_MOCK` | `false` | Made-up numbers, no model: for testing the API without torch. |
+| `ESM_SERVICE_MAX_RECORD_BYTES` | `2097152` | Largest accepted FASTA/GenBank text. |
 
 ## API
 
@@ -94,14 +132,32 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-They cover the sequence rules (masks, positions, translation, length, FASTA records) and the API's
-answers and error codes. To check against a real model, start the service and compare one request with
-the `esm-directed-evolution` script's output for the same sequence: the numbers must be identical.
+They cover the sequence rules (masks, positions, translation, length, FASTA and GenBank records), the
+API's answers and error codes, the resident engine's bookkeeping, and `tests/golden/`: the output the
+`esm-directed-evolution` script printed before it became a client of this service. That answer, field for
+field, is what this service must keep returning.
+
+Two sets are left out of the default run:
+
+```bash
+pytest -m model                                     # loads a real checkpoint; needs torch and a model file
+ESM_SKILL_SCRIPT=<path to esm_mask_probabilities.py> pytest -q tests/test_parity.py
+```
+
+The first checks the numbers against the ones the script printed for the same sequence. The second serves
+this app on a free port and runs the skill's script against it, so the script's output and the API's answer
+cannot drift apart.
 
 ## Layout
 
 ```
 esm_service/        config, model registry, sequence rules, scoring, the resident engine, the FastAPI app
-scripts/            run_esm_api.py (start it), fetch_models.py (download model files)
-tests/              mock-mode tests
+scripts/            run_esm_api.py (start it), fetch_models.py (download and verify model files)
+deploy/             systemd units and the deployment steps
+tests/              mock-mode tests, plus golden/ (the skill script's frozen output)
 ```
+
+## Licence
+
+This service is MIT (see [LICENSE](LICENSE)); `fair-esm` is MIT too. Meta's model weights keep their own
+terms and are not redistributed here: `scripts/fetch_models.py` downloads them and git ignores them.

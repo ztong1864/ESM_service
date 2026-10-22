@@ -4,11 +4,13 @@
     python scripts/fetch_models.py              # the default model (ESM_SERVICE_DEFAULT_MODEL)
     python scripts/fetch_models.py esm2-650m    # one or more named models
     python scripts/fetch_models.py --list       # what is known and what is already here
+    python scripts/fetch_models.py --verify     # check the files already here against their checksums
 
-A file that is already there is kept (delete it to fetch it again). The download site
-(dl.fbaipublicfiles.com) is slow and has dropped transfers part-way, so an interrupted download continues
-where it stopped when the command is run again. A file whose checksum is recorded is checked before it is
-put in place; the resumable download is the same approach FounDryClaw's venv/build_envs.py uses.
+A file that is already there is kept (delete it to fetch it again), and is not re-read: use --verify for
+that. The download site (dl.fbaipublicfiles.com) is slow and has dropped transfers part-way, so an
+interrupted download continues where it stopped when the command is run again, and a freshly downloaded
+file whose checksum is recorded is checked before it is put in place; the resumable download is the same
+approach FounDryClaw's venv/build_envs.py uses.
 """
 
 from __future__ import annotations
@@ -91,6 +93,36 @@ def fetch(url: str, target: Path, expected: str | None) -> str:
     return f"{target.name}: downloaded, {checked}"
 
 
+def verify_model(name: str, folder: Path) -> tuple[list[str], int]:
+    """Check what is on disk against the recorded checksums. Returns the report and how many are wrong.
+
+    A multi-GB download from a site that drops transfers can end up truncated, and an existing file is
+    never re-read while fetching, so this is the only way to find that out before a request does.
+    """
+    spec = resolve(name)
+    if spec is None:
+        known = ", ".join(MODELS)
+        raise SystemExit(f"fetch_models: unknown model {name!r}. Known models: {known}")
+    lines: list[str] = []
+    wrong = 0
+    for path, expected in ((folder / f"{spec.file_stem}.pt", spec.sha256),
+                           (folder / f"{spec.file_stem}-contact-regression.pt", spec.regression_sha256)):
+        if not path.is_file():
+            lines.append(f"{path.name}: not here")
+            continue
+        actual = digest_of(path)
+        if expected is None:
+            lines.append(f"{path.name}: here, no recorded sha256 (actual {actual}; record it in "
+                         "esm_service/models.py)")
+        elif actual == expected:
+            lines.append(f"{path.name}: sha256 ok")
+        else:
+            lines.append(f"{path.name}: sha256 {actual} is NOT the recorded one ({expected}); "
+                         "delete the file and fetch it again")
+            wrong += 1
+    return lines, wrong
+
+
 def fetch_model(name: str, folder: Path) -> list[str]:
     spec = resolve(name)
     if spec is None:
@@ -112,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("models", nargs="*", help=f"Models to fetch (default: {config.DEFAULT_MODEL}).")
     parser.add_argument("--models-dir", help="Where to put them (default: ESM_MODELS_DIR, else ./models).")
     parser.add_argument("--list", action="store_true", help="Show the known models and exit.")
+    parser.add_argument("--verify", action="store_true",
+                        help="Check the files already here against their recorded sha256 instead of downloading.")
     args = parser.parse_args(argv)
 
     folder = Path(args.models_dir).resolve() if args.models_dir else config.MODELS_DIR
@@ -122,6 +156,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {spec.name:<10} {spec.parameters:>4} params  "
                   f"{'installed' if here else 'not installed'}  {spec.file_stem}.pt")
         return 0
+
+    if args.verify:
+        wrong = 0
+        for name in (args.models or list(MODELS)):
+            lines, bad = verify_model(name, folder)
+            if lines == ["not here"] or all(line.endswith("not here") for line in lines):
+                continue  # a model that was never installed is not a problem
+            print(f"{name}:", flush=True)
+            for line in lines:
+                print(f"  {line}", flush=True)
+            wrong += bad
+        return 1 if wrong else 0
 
     for name in (args.models or [config.DEFAULT_MODEL]):
         print(f"{name}:", flush=True)

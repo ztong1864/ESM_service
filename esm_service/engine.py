@@ -11,6 +11,7 @@ validation, and the mock mode) still work where they are not installed.
 from __future__ import annotations
 
 import hashlib
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -26,6 +27,10 @@ ESM2_VOCAB = ["<cls>", "<pad>", "<eos>", "<unk>", "L", "A", "G", "V", "S", "E", 
               "Q", "N", "F", "Y", "M", "H", "W", "C", "X", "B", "U", "Z", "O", ".", "-", "<null_1>", "<mask>"]
 
 MOCK_ENGINE = "mock (made-up logits; not a model result)"
+
+# A model this registry does not know may still be a file an administrator added, so a plain file
+# stem is accepted -- but only a plain one: the name becomes a path under MODELS_DIR.
+_PLAIN_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 class ModelNotAvailable(RuntimeError):
@@ -53,11 +58,16 @@ def installed_models(folder: Path | None = None) -> list[str]:
 
 def _not_installed_message(name: str, folder: Path) -> str:
     installed = installed_models(folder)
-    kind = ("ESM-1v is not installed here" if name.lower().startswith("esm1v")
-            else f"model {name} is not installed")
     choice = f"Installed: {', '.join(installed)}; use one of those." if installed else "No model is installed."
-    return (f"{kind} (looked in {folder}). {choice} An administrator can add it with "
-            f"`python scripts/fetch_models.py {name}` on the server running this service.")
+    if resolve(name) is not None:
+        how = (f"An administrator can add it with `python scripts/fetch_models.py {name}` on the server "
+               "running this service.")
+    else:
+        # Only the ESM-2 models can be fetched by name. Another fair-esm checkpoint (ESM-1, ESM-1b, ESM-1v)
+        # does load -- the loader picks the architecture out of the file -- but nothing here can download it.
+        how = ("Only the ESM-2 models can be fetched by name (`python scripts/fetch_models.py --list`); "
+               "any other fair-esm checkpoint has to be put in that folder by an administrator.")
+    return f"model {name} is not installed (looked in {folder}). {choice} {how}"
 
 
 def resolve_device(requested: str) -> str:
@@ -88,7 +98,9 @@ class Engine:
 
     def model_path(self, name: str) -> Path:
         spec = resolve(name)
-        stem = spec.file_stem if spec else name
+        if spec is None and not _PLAIN_NAME.fullmatch(name.strip()):
+            raise ModelNotAvailable(f"{name.strip()!r} is not a model name")
+        stem = spec.file_stem if spec else name.strip()
         path = config.MODELS_DIR / f"{stem}.pt"
         if not path.is_file():
             raise ModelNotAvailable(_not_installed_message(name, config.MODELS_DIR))

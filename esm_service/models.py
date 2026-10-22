@@ -36,7 +36,15 @@ class ModelSpec:
 MODELS: dict[str, ModelSpec] = {
     spec.name: spec
     for spec in (
-        ModelSpec("esm2-8m", "esm2_t6_8M_UR50D", "8M", 6, 320),
+        ModelSpec(
+            "esm2-8m",
+            "esm2_t6_8M_UR50D",
+            "8M",
+            6,
+            320,
+            sha256="46f002a9870c9bdecd0ea887acb1f9a38a6b561e8f8bf8a6990b679b9d31b928",
+            regression_sha256="8f7a4557d57713b97ba0e484303007efb7230d25299c0ac47a0a1b12a87bbb9d",
+        ),
         ModelSpec(
             "esm2-35m",
             "esm2_t12_35M_UR50D",

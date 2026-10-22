@@ -20,6 +20,13 @@ services:
       - "127.0.0.1:8789:8789"
     volumes:
       - ./models:/app/models:ro
+    # Without a cap the json-file driver grows without limit, which matters on a server that runs this
+    # for months.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test:
         [
